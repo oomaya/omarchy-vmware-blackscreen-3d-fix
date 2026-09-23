@@ -130,8 +130,12 @@ From a brand new Omarchy VM:
    ```
    Only needed once, the first time you apply the patch — it's fixing up the desktop
    environment, not the kernel, so it doesn't need to be re-run after later system updates.
-   Re-running `install-kernel-patch.sh` alone is enough to keep the patch current going
-   forward.
+6. **Enable unattended pre-reboot automation (Recommended)**:
+   Install the pacman hook so future kernel updates automatically rebuild the patch *before* reboot:
+   ```bash
+   ~/Omarchy-Black-Screen-VMware-Fix/tools/install-automation.sh
+   ```
+   This eliminates the post-upgrade black screen and second reboot.
 
 Do **not** run `install-kernel-patch.sh` with `sudo` — `makepkg` refuses to run as root; the
 script asks for `sudo` itself at the specific points that need it. Both scripts support
@@ -140,12 +144,15 @@ script asks for `sudo` itself at the specific points that need it. Both scripts 
 ## Repo layout
 
 ```
-install-kernel-patch.sh    <- update, build, patch, install, reboot (run, reboot, run again)
+install-kernel-patch.sh    <- update, build, patch, install, reboot (supports --target-kver)
 patches/
   vmwgfx-bridge-fix.patch  <- the kernel patch, portable (patch -p1 from a kernel source root)
 tools/
   vmwtest.c                <- run this first: says in seconds whether a VM is affected
   post-install.sh          <- after the FIRST reboot only: wake-on-input, open-vm-tools, resolution
+  install-automation.sh    <- installs the ALPM pacman hook for pre-reboot rebuilds
+  pacman-hook-handler.sh   <- invoked during pacman PostTransaction to rebuild for new kernel
+  95-vmwgfx-patch.hook     <- ALPM pacman hook trigger definition
 BUG-ANALYSIS.md            <- full root-cause diagnosis and fix design, with source citations
 ```
 
