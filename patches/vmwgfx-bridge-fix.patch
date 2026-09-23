@@ -92,7 +92,7 @@ index 598b90a..72582af 100644
  
  /*
   * DMA-BUF attach- and mapping methods. No need to implement
-@@ -72,15 +73,186 @@ const struct dma_buf_ops vmw_prime_dmabuf_ops =  {
+@@ -72,15 +73,192 @@ const struct dma_buf_ops vmw_prime_dmabuf_ops =  {
  	.release = NULL,
  };
  
@@ -140,7 +140,7 @@ index 598b90a..72582af 100644
 + * have been recycled for a completely unrelated object.
 + */
 +struct vmw_prime_import_bridge {
-+	struct drm_gem_object    base;
++	struct drm_gem_object    base; /* __must_hold bridge GEM ref */
 +	struct ttm_base_object  *base_obj;
 +	uint32_t                 ttm_handle;
 +};
@@ -150,6 +150,7 @@ index 598b90a..72582af 100644
 +	struct vmw_prime_import_bridge *bridge =
 +		container_of(obj, struct vmw_prime_import_bridge, base);
 +
++	WARN_ON_ONCE(!bridge->base_obj);
 +	ttm_base_object_unref(&bridge->base_obj);
 +	drm_gem_object_release(obj);
 +	kfree(bridge);
@@ -200,9 +201,14 @@ index 598b90a..72582af 100644
 +vmw_prime_resolve_handle(struct drm_file *file_priv, uint32_t handle,
 +			 uint32_t *real_handle)
 +{
-+	struct drm_gem_object *gobj = drm_gem_object_lookup(file_priv, handle);
++	struct drm_gem_object *gobj;
 +
 +	*real_handle = handle;
++
++	if (!file_priv)
++		return NULL;
++
++	gobj = drm_gem_object_lookup(file_priv, handle);
 +
 +	if (!gobj)
 +		return NULL;
@@ -281,7 +287,7 @@ index 598b90a..72582af 100644
  
  	return ret;
  }
-@@ -92,16 +264,31 @@ int vmw_prime_handle_to_fd(struct drm_device *dev,
+@@ -92,16 +270,31 @@ int vmw_prime_handle_to_fd(struct drm_device *dev,
  {
  	struct vmw_private *vmw = vmw_priv(dev);
  	struct ttm_object_file *tfile = vmw_fpriv(file_priv)->tfile;
@@ -314,7 +320,7 @@ index 598b90a..72582af 100644
  		if (vbo && vbo->is_dumb) {
  			ret = drm_gem_prime_handle_to_fd(dev, file_priv, handle,
  							 flags, prime_fd);
-@@ -120,5 +307,9 @@ int vmw_prime_handle_to_fd(struct drm_device *dev,
+@@ -120,5 +313,9 @@ int vmw_prime_handle_to_fd(struct drm_device *dev,
  		vmw_user_bo_unref(&vbo);
  	}
  
