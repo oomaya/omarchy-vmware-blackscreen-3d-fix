@@ -136,10 +136,36 @@ From a brand new Omarchy VM:
    ~/Omarchy-Black-Screen-VMware-Fix/tools/install-automation.sh
    ```
    This eliminates the post-upgrade black screen and second reboot.
+7. **Unlock full Hardware 3D Acceleration (SVGA3D)**:
+   Omarchy configurations often default to software rendering (`LIBGL_ALWAYS_SOFTWARE=1`) in
+   `/etc/environment` and `~/.config/hypr/hyprland.lua` as a stopgap to bypass the black screen bug.
+   With this patch active, you can unlock full host-accelerated 3D rendering:
+   ```bash
+   # Remove forced software rasterizer fallback from PAM environment
+   sudo sed -i 's/^LIBGL_ALWAYS_SOFTWARE=1/# LIBGL_ALWAYS_SOFTWARE=1/' /etc/environment
+   ```
+   In `~/.config/hypr/hyprland.lua`, ensure `LIBGL_ALWAYS_SOFTWARE` is disabled or set to `"0"`:
+   ```lua
+   hl.env("LIBGL_ALWAYS_SOFTWARE", "0")
+   ```
+   Restart your session (`omarchy-system-logout`) and verify with `glmark2-wayland`.
 
 Do **not** run `install-kernel-patch.sh` with `sudo` — `makepkg` refuses to run as root; the
 script asks for `sudo` itself at the specific points that need it. Both scripts support
 `--dry-run` to show every change without making it, and `-h`/`--help` for the full option list.
+
+## Performance: Hardware (SVGA3D) vs Software (llvmpipe)
+
+Tested under native Wayland via `glmark2-wayland` on `7.2.5-3-omarchy`:
+
+| Benchmark Scene | Hardware (`SVGA3D`) | Software (`llvmpipe`) | Frame Time (HW vs SW) | Speedup Factor |
+| :--- | :---: | :---: | :---: | :---: |
+| **build** (geometry / VBOs) | **545 FPS** | 74 FPS | 1.84 ms vs 13.70 ms | **7.4×** |
+| **bump** (normal / height mapping) | **737 FPS** | 84 FPS | 1.36 ms vs 11.94 ms | **8.8×** |
+| **desktop** (blur & shadow passes) | **463 FPS** | 52 FPS | 2.16 ms vs 19.30 ms | **8.9×** |
+| **buffer** (subdata & map updates) | **213 FPS** | 72 FPS | 4.72 ms vs 14.01 ms | **3.0×** |
+| **terrain** (complex vertex/fragment) | **289 FPS** | 11 FPS | 3.46 ms vs 91.45 ms | **26.3×** |
+| **glmark2 Composite Score** | **448** | **57** | — | **7.9×** |
 
 ## Repo layout
 
