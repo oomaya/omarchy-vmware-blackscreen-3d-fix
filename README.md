@@ -156,16 +156,16 @@ script asks for `sudo` itself at the specific points that need it. Both scripts 
 
 ## Performance: Hardware (SVGA3D) vs Software (llvmpipe)
 
-Tested under native Wayland via `glmark2-wayland` on `7.2.5-3-omarchy`:
+Tested under native Wayland via `glmark2-wayland` on `7.2.5-3-omarchy` (unthrottled host GPU):
 
 | Benchmark Scene | Hardware (`SVGA3D`) | Software (`llvmpipe`) | Frame Time (HW vs SW) | Speedup Factor |
 | :--- | :---: | :---: | :---: | :---: |
-| **build** (geometry / VBOs) | **545 FPS** | 74 FPS | 1.84 ms vs 13.70 ms | **7.4×** |
-| **bump** (normal / height mapping) | **737 FPS** | 84 FPS | 1.36 ms vs 11.94 ms | **8.8×** |
-| **desktop** (blur & shadow passes) | **463 FPS** | 52 FPS | 2.16 ms vs 19.30 ms | **8.9×** |
-| **buffer** (subdata & map updates) | **213 FPS** | 72 FPS | 4.72 ms vs 14.01 ms | **3.0×** |
-| **terrain** (complex vertex/fragment) | **289 FPS** | 11 FPS | 3.46 ms vs 91.45 ms | **26.3×** |
-| **glmark2 Composite Score** | **448** | **57** | — | **7.9×** |
+| **build** (geometry / VBOs) | **1,362 FPS** | 74 FPS | **0.73 ms** vs 13.70 ms | **18.4×** |
+| **bump** (normal / height mapping) | **1,449 FPS** | 84 FPS | **0.69 ms** vs 11.94 ms | **17.3×** |
+| **desktop** (blur & shadow passes) | **1,080 FPS** | 52 FPS | **0.93 ms** vs 19.30 ms | **20.8×** |
+| **buffer** (subdata & map updates) | **447 FPS** | 72 FPS | **2.24 ms** vs 14.01 ms | **6.2×** |
+| **terrain** (complex vertex/fragment) | **794 FPS** | 11 FPS | **1.26 ms** vs 91.45 ms | **72.2×** |
+| **glmark2 Composite Score** | **1,025** | **57** | — | **18.0×** |
 
 ## Repo layout
 

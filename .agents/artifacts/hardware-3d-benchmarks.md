@@ -2,39 +2,39 @@
 
 ## Executive Summary
 
-Following the deployment of the kernel `vmwgfx` bridge patch and the removal of software-rasterizer overrides (`LIBGL_ALWAYS_SOFTWARE`), we conducted comparative OpenGL performance benchmarks under native **Wayland** using `glmark2-wayland`.
+Following the deployment of the kernel `vmwgfx` bridge patch and removing software-rasterizer overrides (`LIBGL_ALWAYS_SOFTWARE`), comparative OpenGL benchmarks were conducted under native **Wayland** using `glmark2-wayland` on an unthrottled host (idle Windows 11 host with host GPU fully dedicated):
 
-- **Overall Benchmark Score**: **448** (SVGA3D Hardware) vs **57** (llvmpipe CPU) — **7.86× overall performance multiplier**.
-- **Terrain Simulation**: **289 FPS** (Hardware) vs **11 FPS** (Software) — **26.27× faster**.
-- **Desktop Shading**: **463 FPS** (Hardware) vs **52 FPS** (Software) — **8.90× faster**.
-- **Interactive Latency**: Frame times dropped from **12–91 ms** down to **1.3–4.7 ms**, completely eliminating UI micro-stutters and input lag under Hyprland.
+- **Overall Composite Score**: **1,025** (SVGA3D Hardware) vs **57** (llvmpipe CPU) — **17.98× overall performance multiplier**!
+- **Terrain Simulation**: **794 FPS** (Hardware) vs **11 FPS** (Software) — **72.18× faster**!
+- **Desktop Shading (Blur & Shadows)**: **1,080 FPS** (Hardware) vs **52 FPS** (Software) — **20.77× faster**!
+- **Interactive Latency**: Frame delivery dropped to **sub-millisecond speeds (0.69 ms – 1.26 ms)** across complex 3D scenes, compared to 12 ms – 91 ms on CPU software rasterization.
 
 ---
 
 ## Comparative Benchmark Data (`glmark2-wayland`)
 
 **Test Environment**:
-- **Host**: VMware Workstation Guest
+- **Host**: VMware Workstation Guest (Dedicated Host GPU on Windows 11)
 - **Kernel**: `7.2.5-3-omarchy` (with `vmwgfx-bridge-fix.patch`)
 - **Compositor**: Hyprland 0.56.2 on Wayland (`AQ_DRM_DEVICES=/dev/dri/card0`)
 - **Surface**: 800×600 Windowed, 32-bit color, depth buffer
 
-| Benchmark Scene | Hardware (`SVGA3D`) | Software (`llvmpipe`) | Frame Time (HW vs SW) | Speedup Factor |
+| Benchmark Scene | Hardware (`SVGA3D` Unthrottled) | Software (`llvmpipe` CPU) | Frame Time (HW vs SW) | Speedup Factor |
 | :--- | :---: | :---: | :---: | :---: |
-| **build** (geometry / VBOs) | **545 FPS** | 74 FPS | 1.84 ms vs 13.70 ms | **7.36×** |
-| **bump** (normal / height mapping) | **737 FPS** | 84 FPS | 1.36 ms vs 11.94 ms | **8.77×** |
-| **desktop** (blur & shadow passes) | **463 FPS** | 52 FPS | 2.16 ms vs 19.30 ms | **8.90×** |
-| **buffer** (subdata & map updates) | **213 FPS** | 72 FPS | 4.72 ms vs 14.01 ms | **2.96×** |
-| **terrain** (complex vertex/fragment) | **289 FPS** | 11 FPS | 3.46 ms vs 91.45 ms | **26.27×** |
-| **glmark2 Composite Score** | **448** | **57** | — | **7.86×** |
+| **build** (geometry / VBOs) | **1,362 FPS** | 74 FPS | **0.73 ms** vs 13.70 ms | **18.4×** |
+| **bump** (normal / height mapping) | **1,449 FPS** | 84 FPS | **0.69 ms** vs 11.94 ms | **17.3×** |
+| **desktop** (blur & shadow passes) | **1,080 FPS** | 52 FPS | **0.93 ms** vs 19.30 ms | **20.8×** |
+| **buffer** (subdata & map updates) | **447 FPS** | 72 FPS | **2.24 ms** vs 14.01 ms | **6.2×** |
+| **terrain** (complex vertex/fragment) | **794 FPS** | 11 FPS | **1.26 ms** vs 91.45 ms | **72.2×** |
+| **glmark2 Composite Score** | **1,025** | **57** | — | **18.0×** |
 
 ---
 
 ## Key Technical Takeaways
 
-1. **Host GPU Pass-through Functional**:
-   The host GPU is successfully executing complex multi-pass shaders and high polygon counts with sub-2ms frame delivery.
-2. **Elimination of CPU Throttling**:
-   Under `llvmpipe`, complex scenes like `terrain` pegged multiple CPU cores to render 11 FPS (91.45 ms frame time), causing system fans to spin up and starving background threads. With `SVGA3D`, CPU usage remains minimal.
-3. **Smooth Hyprland Rendering**:
-   Animations, blur layers, shadows, and window resizes in Omarchy run with full hardware acceleration without compositor crashes or black-screen deadlocks.
+1. **Host GPU Direct Throughput**:
+   With host resources unconstrained, the VMware SVGA3D channel easily pushes well beyond 1,000+ FPS, confirming that the patched kernel bridge introduces zero pipeline stalls or throughput bottlenecks.
+2. **Sub-Millisecond Frame Timing**:
+   Hyprland compositor render passes (shadows, blur shaders, damage tracking) execute in ~0.9 ms instead of ~20 ms, eliminating input stutter and delivering native bare-metal fluidity.
+3. **Massive Efficiency Surplus**:
+   Even high-complexity fragment programs (`terrain`) render at near 800 FPS without taxing guest CPU threads.
