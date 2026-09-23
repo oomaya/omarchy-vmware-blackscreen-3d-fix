@@ -1,0 +1,10 @@
+# Build artifacts & binaries
+vmwtest
+*.o
+*.ko
+*.ko.zst
+*.log
+*.bak*
+
+# Scratch
+scratch/

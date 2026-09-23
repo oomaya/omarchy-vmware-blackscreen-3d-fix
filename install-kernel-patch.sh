@@ -36,9 +36,11 @@
 #                         (fixes up the desktop, not the kernel -- no need to re-run it after
 #                         later re-runs of this script following a system update)
 #
-#     --dry-run     print every command that would run; change nothing
-#     --yes         do not ask before installing the built module (still asks before reboot)
-#     --no-reboot   stop after install instead of offering a reboot
+#     --dry-run            print every command that would run; change nothing
+#     --yes                do not ask before installing the built module (still asks before reboot)
+#     --no-reboot          stop after install instead of offering a reboot
+#     --no-update          skip system update check/prompt
+#     --target-kver <ver>  target a specific kernel version (defaults to uname -r)
 #
 # Do NOT run this with sudo. makepkg refuses to run as root; the script asks for sudo
 # at the specific points that need it (package installs, module install, depmod,
@@ -89,15 +91,21 @@ PACMAN=(sudo env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman)
 DRY_RUN=no
 ASSUME_YES=no
 DO_REBOOT=yes
+TARGET_KVER=""
+SKIP_UPDATE=no
+ALLOW_ROOT=no
 STEP=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --dry-run)   DRY_RUN=yes ;;
-        --yes|-y)    ASSUME_YES=yes ;;
-        --no-reboot) DO_REBOOT=no ;;
-        -h|--help)   sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-        *)           printf 'unknown option: %s (try --help)\n' "$1" >&2; exit 2 ;;
+        --dry-run)           DRY_RUN=yes ;;
+        --yes|-y)            ASSUME_YES=yes ;;
+        --no-reboot)         DO_REBOOT=no ;;
+        --no-update)         SKIP_UPDATE=yes ;;
+        --target-kver|-k)    TARGET_KVER="$2"; shift ;;
+        --allow-root)        ALLOW_ROOT=yes ;;
+        -h|--help)           sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        *)                   printf 'unknown option: %s (try --help)\n' "$1" >&2; exit 2 ;;
     esac
     shift
 done
@@ -117,6 +125,8 @@ fi
 
 LOGFILE="${LOGFILE:-$HOME/vmwgfx-kernel-patch-$(date +%Y%m%d-%H%M%S).log}"
 if [[ -z ${_VMWFIX_TEED:-} ]]; then
+    install -m 600 /dev/null "$LOGFILE" 2>/dev/null || touch "$LOGFILE"
+    chmod 600 "$LOGFILE" 2>/dev/null || true
     export _VMWFIX_TEED=1
     exec > >(tee -a "$LOGFILE") 2>&1
 fi
@@ -171,15 +181,34 @@ info "log:      $LOGFILE"
 
 step "Preflight"
 
-[[ $EUID -ne 0 ]] || die "do not run this as root or with sudo; makepkg refuses to run as root"
+BUILD_USER=""
+if [[ $EUID -eq 0 ]]; then
+    if [[ $ALLOW_ROOT != yes ]]; then
+        die "do not run this as root or with sudo directly; makepkg refuses to run as root. Run as normal user, or pass --allow-root if invoked via pacman hook."
+    fi
+    BUILD_USER="${SUDO_USER:-$(getent passwd | awk -F: '$3 >= 1000 && $3 < 60000 {print $1; exit}')}"
+    [[ -n $BUILD_USER ]] || die "could not determine non-root build user for makepkg"
+    info "running as root (pacman hook mode); build user: $BUILD_USER"
+fi
 [[ -f $PATCH_FILE ]] || die "bundle looks incomplete: no patches/vmwgfx-bridge-fix.patch under $BUNDLE"
 command -v pacman >/dev/null || die "this script is Arch-specific (pacman not found)"
 
-KVER="$(uname -r)"
-info "kernel:      $KVER"
+if [[ -n $TARGET_KVER ]]; then
+    KVER="$TARGET_KVER"
+    SKIP_UPDATE=yes
+    info "kernel target: $KVER (specified via --target-kver)"
+else
+    KVER="$(uname -r)"
+    info "kernel:      $KVER"
+fi
 
-[[ -d /usr/lib/modules/$KVER ]] \
-    || need_reboot "A kernel update already replaced the kernel you are running ($KVER), so nothing can be built against it yet. Nothing is wrong -- the VM just has to boot into the new kernel first."
+if [[ ! -d /usr/lib/modules/$KVER ]]; then
+    if [[ -n $TARGET_KVER ]]; then
+        die "target kernel directory /usr/lib/modules/$KVER not found -- check that $TARGET_KVER is installed"
+    else
+        need_reboot "A kernel update already replaced the kernel you are running ($KVER), so nothing can be built against it yet. Nothing is wrong -- the VM just has to boot into the new kernel first."
+    fi
+fi
 
 DRIVER=$(basename "$(readlink -f /sys/class/drm/card0/device/driver 2>/dev/null)" 2>/dev/null || echo unknown)
 info "DRM driver:  $DRIVER"
@@ -193,6 +222,13 @@ if [[ -r /usr/lib/modules/$KVER/build/.config ]]; then
     fi
 else
     warn "no build/.config yet (linux-headers not installed?) -- will check again after installing it"
+fi
+
+REAL_WORK="$(readlink -f "$WORK" 2>/dev/null || echo "$WORK")"
+REAL_HOME="$(readlink -f "$HOME" 2>/dev/null || echo "$HOME")"
+REAL_BUNDLE="$(readlink -f "$BUNDLE" 2>/dev/null || echo "$BUNDLE")"
+if [[ "$REAL_WORK" == "/" || "$REAL_WORK" == "$REAL_HOME" || "$REAL_WORK" == "$REAL_BUNDLE" ]]; then
+    die "Refusing unsafe WORK path: $WORK"
 fi
 
 if [[ -d $WORK ]]; then
@@ -209,10 +245,10 @@ FREE_KB=$(df --output=avail -k "$WORK" | tail -1 | tr -d ' ')
 info "free space:  $((FREE_KB/1024/1024)) GB in $WORK"
 (( FREE_KB > MIN_FREE_GB*1024*1024 )) || die "under ${MIN_FREE_GB}G free in $WORK"
 
-if [[ $DRY_RUN == no ]]; then
+if [[ $DRY_RUN == no && $EUID -ne 0 ]]; then
     info "sudo is needed for: package installs, module install, depmod, mkinitcpio, reboot"
     sudo -v || die "sudo failed"
-    ( while true; do sleep 50; sudo -n true 2>/dev/null || exit; kill -0 "$$" 2>/dev/null || exit; done ) &
+    ( while true; do sleep 50; sudo -n true 2>/dev/null || exit; kill -0 "$$" 2>/dev/null || exit; kill -0 "$PPID" 2>/dev/null || exit; done ) &
     SUDO_KEEPALIVE_PID=$!
     trap '[[ -n ${SUDO_KEEPALIVE_PID:-} ]] && kill "$SUDO_KEEPALIVE_PID" 2>/dev/null; true' EXIT
 fi
@@ -252,7 +288,9 @@ else
     UPDATE_CMD=("${PACMAN[@]}" -Syu --noconfirm)
     UPDATE_DESC="'sudo pacman -Syu'"
 fi
-if confirm "run $UPDATE_DESC now?"; then
+if [[ $SKIP_UPDATE == yes ]]; then
+    info "skipping system update (requested or targeting kernel $KVER)"
+elif confirm "run $UPDATE_DESC now?"; then
     # Its final step can exit non-zero just because a reboot prompt was declined; an update
     # that genuinely failed midway is caught by the out-of-date-kernel check below.
     run "${UPDATE_CMD[@]}" || warn "the updater exited non-zero -- continuing; checks below will catch an incomplete update"
@@ -271,14 +309,14 @@ fi
 # wrong tree. It has worked before only because none of Omarchy's own patches happened to
 # touch vmwgfx yet -- that is a coincidence of timing, not something to rely on going forward.
 KPKG=$(pacman -Qo "/usr/lib/modules/$KVER/vmlinuz" 2>/dev/null | awk '{print $(NF-1)}')
-[[ -n $KPKG ]] || die "could not determine which package owns the running kernel ($KVER) -- is /usr/lib/modules/$KVER/vmlinuz present?"
-info "running kernel ($KVER) is owned by package: $KPKG"
+[[ -n $KPKG ]] || die "could not determine which package owns the kernel ($KVER) -- is /usr/lib/modules/$KVER/vmlinuz present?"
+info "kernel ($KVER) is owned by package: $KPKG"
 
 # A fresh Omarchy VM boots the (older) kernel from the install ISO. The repos only carry the
 # current kernel and its matching headers, so headers for the running kernel simply do not
 # exist until the kernel itself is updated and the VM rebooted into it. Building against
 # mismatched headers produces a module the running kernel will refuse to load.
-if pacman -Qu "$KPKG" >/dev/null 2>&1; then
+if [[ -z $TARGET_KVER ]] && pacman -Qu "$KPKG" >/dev/null 2>&1; then
     NEWER=$(pacman -Qu "$KPKG")
     if [[ $DRY_RUN == yes ]]; then
         warn "a newer $KPKG is available ($NEWER) -- a real run would stop here"
@@ -452,8 +490,38 @@ if [[ $DRY_RUN == no ]]; then
     fi
 fi
 
-info "this downloads the kernel release tarball and applies $KPKG's own patches on top"
-run bash -c "cd '$PKGSUBDIR' && makepkg -o --nodeps --skippgpcheck"
+if [[ $EUID -eq 0 ]]; then
+    run chown -R "$BUILD_USER:" "$WORK"
+    if compgen -G "$PKGSUBDIR/keys/pgp/*.asc" >/dev/null; then
+        info "importing embedded kernel signing keys into $BUILD_USER keyring"
+        run runuser -u "$BUILD_USER" -- gpg --batch --import "$PKGSUBDIR/keys/pgp/"*.asc 2>/dev/null || warn "gpg key import had warnings"
+    fi
+
+    info "this downloads the kernel release tarball and applies $KPKG's own patches on top"
+    if compgen -G "$PKGSUBDIR/keys/pgp/*.asc" >/dev/null; then
+        run runuser -u "$BUILD_USER" -- bash -c "cd '$PKGSUBDIR' && makepkg -o --nodeps" || {
+            warn "makepkg signature check failed; retrying with --skippgpcheck"
+            run runuser -u "$BUILD_USER" -- bash -c "cd '$PKGSUBDIR' && makepkg -o --nodeps --skippgpcheck"
+        }
+    else
+        run runuser -u "$BUILD_USER" -- bash -c "cd '$PKGSUBDIR' && makepkg -o --nodeps --skippgpcheck"
+    fi
+else
+    if compgen -G "$PKGSUBDIR/keys/pgp/*.asc" >/dev/null; then
+        info "importing embedded kernel signing keys from $PKGSUBDIR/keys/pgp/"
+        run gpg --batch --import "$PKGSUBDIR/keys/pgp/"*.asc 2>/dev/null || warn "gpg key import had warnings"
+    fi
+
+    info "this downloads the kernel release tarball and applies $KPKG's own patches on top"
+    if compgen -G "$PKGSUBDIR/keys/pgp/*.asc" >/dev/null; then
+        run bash -c "cd '$PKGSUBDIR' && makepkg -o --nodeps" || {
+            warn "makepkg signature check failed; retrying with --skippgpcheck"
+            run bash -c "cd '$PKGSUBDIR' && makepkg -o --nodeps --skippgpcheck"
+        }
+    else
+        run bash -c "cd '$PKGSUBDIR' && makepkg -o --nodeps --skippgpcheck"
+    fi
+fi
 
 # ------------------------------------------------------------------ 6. apply our patch
 
@@ -512,8 +580,8 @@ if [[ $DRY_RUN == no ]]; then
 
     BUILT_VERMAGIC=$(modinfo "$KO" | awk -F': *' '/^vermagic/{print $2}')
     info "built module vermagic: $BUILT_VERMAGIC"
-    [[ $BUILT_VERMAGIC == "$KVER"* ]] || die "vermagic ($BUILT_VERMAGIC) does not match running kernel ($KVER) -- do not install this"
-    ok "vermagic matches the running kernel"
+    [[ $BUILT_VERMAGIC == "$KVER"* ]] || die "vermagic ($BUILT_VERMAGIC) does not match target kernel ($KVER) -- do not install this"
+    ok "vermagic matches the target kernel"
     BUILT_SRCVERSION=$(modinfo "$KO" | awk -F': *' '/^srcversion/{print $2}')
     info "built module srcversion: $BUILT_SRCVERSION   (compare against /sys/module/vmwgfx/srcversion after reboot)"
 else
@@ -541,8 +609,12 @@ if [[ $DRY_RUN == no ]]; then
     elif [[ -f "$MODDIR/vmwgfx.ko.orig" || -f "$MODDIR/vmwgfx.ko.zst.orig" ]]; then
         info "a backup of the stock module already exists -- not overwriting it"
     fi
-    [[ -n $EXISTING && $EXISTING != "$MODDIR/vmwgfx.ko" ]] && run sudo rm -f "$EXISTING"
-    run sudo cp "$VMWGFX_DIR/vmwgfx.ko" "$MODDIR/vmwgfx.ko"
+    [[ -n $EXISTING && $EXISTING != "$MODDIR/vmwgfx.ko" && $EXISTING != "$MODDIR/vmwgfx.ko.zst" ]] && run sudo rm -f "$EXISTING"
+    run sudo install -Dm644 "$VMWGFX_DIR/vmwgfx.ko" "$MODDIR/vmwgfx.ko"
+    if [[ $EXISTING == *.zst ]] && command -v zstd >/dev/null; then
+        run sudo zstd -f --rm "$MODDIR/vmwgfx.ko"
+        info "compressed module -> vmwgfx.ko.zst"
+    fi
     run sudo depmod -a "$KVER"
     ok "module installed and depmod run"
 else
