@@ -1,0 +1,13 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = linux
+Target = linux-omarchy
+
+[Action]
+Description = Pre-reboot rebuild of vmwgfx module for upgraded kernel (preventing black screen)...
+When = PostTransaction
+Depends = base-devel
+Exec = /usr/local/lib/vmwgfx-patch/pacman-hook-handler.sh
+NeedsTargets
