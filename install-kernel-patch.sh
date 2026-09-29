@@ -13,7 +13,9 @@
 # fails with -EINVAL. This is what makes Hyprland kill every GPU client on its first
 # frame. The patch here wraps that private-table handle in a minimal GEM object
 # registered in the *standard* handle table, so ordinary GEM_CLOSE succeeds and
-# correctly cascades into releasing the real reference. Full writeup: BUG-ANALYSIS.md.
+# correctly cascades into releasing the real reference. Hardened for Syzbot
+# error-path unwinding, rate-limited user logging, and TOCTOU race prevention.
+# Full writeup: BUG-ANALYSIS.md.
 #
 # This builds ONLY the vmwgfx kernel module (not a full kernel image) against your
 # currently running kernel's headers -- no kernel rebuild, no bootloader changes.
