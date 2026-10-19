@@ -1,0 +1,16 @@
+# Maintainer: Rand <rand@omarchy>
+pkgname=vmwgfx-workaround-dkms
+pkgver=1.0
+pkgrel=1
+pkgdesc="VMware vmwgfx kernel module with dmabuf GEM_CLOSE bridge fix for Hyprland 3D acceleration"
+arch=('x86_64')
+url="https://github.com/oomaya/omarchy-vmware-blackscreen-3d-fix"
+license=('GPL-2.0-only')
+depends=('dkms')
+
+package() {
+    local destdir="${pkgdir}/usr/src/${pkgname%-dkms}-${pkgver}"
+    install -dm755 "${destdir}"
+    cp -r "${startdir}/src/"* "${destdir}/"
+    chmod -R u=rwX,go=rX "${destdir}"
+}

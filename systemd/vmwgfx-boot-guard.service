@@ -1,0 +1,12 @@
+[Unit]
+Description=VMware vmwgfx dmabuf bridge guard & black screen fallback
+Before=display-manager.service sddm.service
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/vmwgfx-boot-guard.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

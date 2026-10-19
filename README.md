@@ -171,14 +171,18 @@ Tested under native Wayland via `glmark2-wayland` on `7.2.5-3-omarchy` (unthrott
 
 ```
 install-kernel-patch.sh    <- update, build, patch, install, reboot (supports --target-kver)
+dkms/                      <- standard Arch DKMS package (vmwgfx-workaround-dkms)
+  PKGBUILD                 <- Arch package build recipe (284 KB self-contained package)
+  src/                     <- patched vmwgfx driver source tree (70 C/H files + device_include)
+systemd/                   <- pre-boot black screen prevention guard
+  vmwgfx-boot-guard.service<- early oneshot service (Before=display-manager.service)
+  vmwgfx-boot-guard.sh     <- detects unpatched driver; activates safe-mode fallback (pixman)
 patches/
   vmwgfx-bridge-fix.patch  <- the kernel patch, portable (patch -p1 from a kernel source root)
 tools/
+  setup-dkms-and-guard.sh  <- one-touch deployer for DKMS + Boot Guard (removes legacy hook)
   vmwtest.c                <- run this first: says in seconds whether a VM is affected
   post-install.sh          <- after the FIRST reboot only: wake-on-input, open-vm-tools, resolution
-  install-automation.sh    <- installs the ALPM pacman hook for pre-reboot rebuilds
-  pacman-hook-handler.sh   <- invoked during pacman PostTransaction to rebuild for new kernel
-  95-vmwgfx-patch.hook     <- ALPM pacman hook trigger definition
 BUG-ANALYSIS.md            <- full root-cause diagnosis and fix design, with source citations
 ```
 
