@@ -6,5 +6,8 @@ vmwtest
 *.log
 *.bak*
 
-# Scratch
+# Scratch & Packaging
 scratch/
+dkms/pkg/
+dkms/src/linux-*/
+*.pkg.tar.*
