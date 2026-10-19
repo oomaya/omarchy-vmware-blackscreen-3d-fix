@@ -7,7 +7,6 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PKG_FILE="$SCRIPT_DIR/dkms/vmwgfx-workaround-dkms-1.0-1-x86_64.pkg.tar.zst"
 SRC_DIR="$SCRIPT_DIR/dkms/src"
 GUARD_SERVICE="$SCRIPT_DIR/systemd/vmwgfx-boot-guard.service"
 GUARD_SCRIPT="$SCRIPT_DIR/systemd/vmwgfx-boot-guard.sh"
