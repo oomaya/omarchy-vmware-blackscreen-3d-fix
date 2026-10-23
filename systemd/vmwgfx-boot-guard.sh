@@ -25,11 +25,19 @@ if [[ ! -x "$CHECK_BIN" ]]; then
     fi
 fi
 
+# vmwtest exit-code contract:
+#   0 = patch not required (patched or unaffected) -> patched
+#   3 = patch REQUIRED (bug reproduced)             -> NOT patched, engage fallback
+#   1/2 = probe failed / inconclusive               -> fail open (assume patched)
 IS_PATCHED=0
 if [[ -x "$CHECK_BIN" ]]; then
-    if "$CHECK_BIN" >/dev/null 2>&1; then
-        IS_PATCHED=1
-    fi
+    check_rc=0
+    "$CHECK_BIN" >/dev/null 2>&1 || check_rc=$?
+    case "$check_rc" in
+        0) IS_PATCHED=1 ;;
+        3) IS_PATCHED=0 ;;
+        *) IS_PATCHED=1 ;;
+    esac
 else
     # If check binary is missing, assume patched to avoid false fallbacks
     IS_PATCHED=1
