@@ -1,3 +1,8 @@
+// Exit codes (contract with vmwgfx-boot-guard.sh -- do not reuse casually):
+//   0 = patch NOT required (GEM close works: driver patched or unaffected)
+//   3 = patch REQUIRED (bug reproduced: GEM close failed, vmw unref worked)
+//   2 = inconclusive (both close paths failed)
+//   1 = probe could not run (open/gbm/import failure)
 // Reproduces Hyprland's CLinuxDMABUFParamsResource::commence() probe and tests
 // the DRM_VMW_UNREF_SURFACE fallback on this exact hardware.
 #include <xf86drm.h>
@@ -67,5 +72,5 @@ int main(void) {
                "        so this kernel has the bug.\n");
     else
         printf("\nRESULT: INCONCLUSIVE - both closes failed, so something other than this bug is wrong.\n");
-    return vmwclose == 0 ? 0 : 2;
+    return vmwclose == 0 ? 3 : 2;
 }
