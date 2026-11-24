@@ -7,7 +7,19 @@
 
 set -euo pipefail
 
-DRIVER=$(basename "$(readlink -f /sys/class/drm/card0/device/driver 2>/dev/null)" 2>/dev/null || echo unknown)
+# Detect whether vmwgfx drives any DRM card (simpledrm often claims card0 during
+# early boot, leaving vmwgfx on card1 or higher).
+DRIVER="unknown"
+for card in /sys/class/drm/card[0-9]*; do
+    [[ "$card" == *-* ]] && continue
+    [[ -e "$card/device/driver" ]] || continue
+    drv=$(basename "$(readlink -f "$card/device/driver" 2>/dev/null)" 2>/dev/null || true)
+    if [[ "$drv" == "vmwgfx" ]]; then
+        DRIVER="vmwgfx"
+        break
+    fi
+    [[ "$DRIVER" == "unknown" && -n "$drv" ]] && DRIVER="$drv"
+done
 if [[ "$DRIVER" != "vmwgfx" ]]; then
     exit 0
 fi

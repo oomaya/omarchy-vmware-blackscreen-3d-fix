@@ -37,9 +37,15 @@ else
     info "No old ALPM hook found in /etc/pacman.d/hooks/."
 fi
 
-info "Step 2: Installing dkms prerequisite..."
-run $SUDO env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -S --needed --noconfirm dkms
-ok "DKMS package confirmed installed."
+info "Step 2: Installing dkms and matching kernel headers..."
+HEADER_PKGS=()
+for kpkg in linux linux-omarchy; do
+    if pacman -Q "$kpkg" >/dev/null 2>&1; then
+        HEADER_PKGS+=("${kpkg}-headers")
+    fi
+done
+run $SUDO env OMARCHY_ALLOW_DIRECT_PACMAN=1 pacman -S --needed --noconfirm dkms "${HEADER_PKGS[@]}"
+ok "DKMS and kernel headers confirmed installed: dkms ${HEADER_PKGS[*]}"
 
 info "Step 3: Deploying vmwgfx-workaround-1.0 source to /usr/src/..."
 DEST_SRC="/usr/src/vmwgfx-workaround-1.0"
@@ -55,24 +61,45 @@ if dkms status -m vmwgfx-workaround -v 1.0 >/dev/null 2>&1; then
 fi
 
 run $SUDO dkms add vmwgfx-workaround/1.0
-KVER="$(uname -r)"
-run $SUDO dkms build vmwgfx-workaround/1.0 -k "$KVER"
-run $SUDO dkms install vmwgfx-workaround/1.0 -k "$KVER" --force
-ok "DKMS module built and installed for kernel: $KVER"
+
+# Build and install for every installed kernel that has matching headers
+BUILT_KVERS=()
+for kbuild in /usr/lib/modules/*/build; do
+    [[ -d "$kbuild" ]] || continue
+    kver="$(basename "$(dirname "$kbuild")")"
+    [[ "$kver" == ".old" ]] && continue
+    info "Building DKMS module for kernel: $kver"
+    run $SUDO dkms build vmwgfx-workaround/1.0 -k "$kver"
+    run $SUDO dkms install vmwgfx-workaround/1.0 -k "$kver" --force
+    BUILT_KVERS+=("$kver")
+done
+if [[ ${#BUILT_KVERS[@]} -eq 0 ]]; then
+    KVER="$(uname -r)"
+    run $SUDO dkms build vmwgfx-workaround/1.0 -k "$KVER"
+    run $SUDO dkms install vmwgfx-workaround/1.0 -k "$KVER" --force
+    BUILT_KVERS+=("$KVER")
+fi
+ok "DKMS module built and installed for kernel(s): ${BUILT_KVERS[*]}"
 
 info "Step 5: Deploying Systemd Pre-Boot Fallback Guard..."
 run $SUDO mkdir -p /usr/local/libexec
 if [[ -f "$CHECK_SRC" ]]; then
-    run $SUDO gcc -O2 -o /usr/local/libexec/vmwgfx-gem-check "$CHECK_SRC" -I/usr/include/libdrm -ldrm -lgbm
-    run $SUDO chmod 755 /usr/local/libexec/vmwgfx-gem-check
-    ok "Compiled /usr/local/libexec/vmwgfx-gem-check"
+    TMP_CHECK="$(mktemp)"
+    run gcc -O2 -o "$TMP_CHECK" "$CHECK_SRC" -I/usr/include/libdrm -ldrm -lgbm
+    run $SUDO install -Dm755 "$TMP_CHECK" /usr/local/libexec/vmwgfx-gem-check
+    rm -f "$TMP_CHECK"
+    if [[ -d "/usr/local/lib/vmwgfx-patch/tools" ]]; then
+        run $SUDO install -Dm644 "$CHECK_SRC" /usr/local/lib/vmwgfx-patch/tools/vmwtest.c
+    fi
+    ok "Compiled and installed /usr/local/libexec/vmwgfx-gem-check"
 fi
 
 run $SUDO install -Dm755 "$GUARD_SCRIPT" /usr/local/libexec/vmwgfx-boot-guard.sh
 run $SUDO install -Dm644 "$GUARD_SERVICE" /etc/systemd/system/vmwgfx-boot-guard.service
 run $SUDO systemctl daemon-reload
-run $SUDO systemctl enable --now vmwgfx-boot-guard.service
-ok "vmwgfx-boot-guard.service enabled and active."
+run $SUDO systemctl enable vmwgfx-boot-guard.service
+run $SUDO systemctl restart vmwgfx-boot-guard.service
+ok "vmwgfx-boot-guard.service enabled and verified."
 
 info "Step 6: Regenerating UKI (Unified Kernel Image) with new DKMS module..."
 if command -v limine-mkinitcpio >/dev/null 2>&1; then

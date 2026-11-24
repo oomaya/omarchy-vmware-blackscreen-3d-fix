@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate shell script syntax
+        run: |
+          bash -n install-kernel-patch.sh
+          bash -n systemd/vmwgfx-boot-guard.sh
+          bash -n tools/setup-dkms-and-guard.sh
+          bash -n tools/pacman-hook-handler.sh
+          bash -n tools/install-automation.sh
+          bash -n tools/post-install.sh
+
+      - name: Verify no hardcoded card0 DRM lookup
+        run: |
+          ! grep -rn '/sys/class/drm/card0' systemd/ install-kernel-patch.sh
+
+      - name: Validate dkms.conf (no deprecated CLEAN directive)
+        run: |
+          test -f dkms/src/dkms.conf
+          ! grep -Eq '^[[:space:]]*CLEAN=' dkms/src/dkms.conf
+
+      - name: Build vmwtest C reproducer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libdrm-dev libgbm-dev pkg-config
+          gcc -Wall -Wextra -Werror -O2 -o /tmp/vmwtest tools/vmwtest.c $(pkg-config --cflags --libs libdrm gbm)
+          test -x /tmp/vmwtest

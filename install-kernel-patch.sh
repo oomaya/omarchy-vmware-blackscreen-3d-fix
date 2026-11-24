@@ -212,7 +212,17 @@ if [[ ! -d /usr/lib/modules/$KVER ]]; then
     fi
 fi
 
-DRIVER=$(basename "$(readlink -f /sys/class/drm/card0/device/driver 2>/dev/null)" 2>/dev/null || echo unknown)
+DRIVER="unknown"
+for card in /sys/class/drm/card[0-9]*; do
+    [[ "$card" == *-* ]] && continue
+    [[ -e "$card/device/driver" ]] || continue
+    drv=$(basename "$(readlink -f "$card/device/driver" 2>/dev/null)" 2>/dev/null || true)
+    if [[ "$drv" == "vmwgfx" ]]; then
+        DRIVER="vmwgfx"
+        break
+    fi
+    [[ "$DRIVER" == "unknown" && -n "$drv" ]] && DRIVER="$drv"
+done
 info "DRM driver:  $DRIVER"
 [[ $DRIVER == vmwgfx ]] || warn "driver is '$DRIVER', not vmwgfx -- this fix targets VMware guests"
 
